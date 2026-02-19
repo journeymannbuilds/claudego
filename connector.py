@@ -1,13 +1,32 @@
+import os
+
 import pandas as pd
 from databricks import sql
 
 
 def get_connection():
-    return sql.connect(
-        server_hostname="dbc-871ad75e-3eed.cloud.databricks.com",
-        http_path="/sql/1.0/warehouses/d490a228b5b077b3",
-        auth_type="databricks-oauth",
+    server = os.environ.get(
+        "DATABRICKS_HOST", "dbc-871ad75e-3eed.cloud.databricks.com"
     )
+    http_path = os.environ.get(
+        "DATABRICKS_HTTP_PATH", "/sql/1.0/warehouses/d490a228b5b077b3"
+    )
+    token = os.environ.get("DATABRICKS_TOKEN")
+
+    if token:
+        # Token auth — used in Cloud Run / headless environments
+        return sql.connect(
+            server_hostname=server,
+            http_path=http_path,
+            access_token=token,
+        )
+    else:
+        # Browser-based OAuth — used for local development
+        return sql.connect(
+            server_hostname=server,
+            http_path=http_path,
+            auth_type="databricks-oauth",
+        )
 
 
 def load_od(origin: str, destination: str) -> pd.DataFrame:
