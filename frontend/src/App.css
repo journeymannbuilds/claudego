@@ -1,0 +1,44 @@
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.app-header h1 {
+  font-size: 1.8rem;
+  color: #1b3a4b;
+  margin-bottom: 0.25rem;
+}
+
+.app-header p {
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.app-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.status-message {
+  padding: 1rem;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.status-message.loading {
+  background-color: #e8f4fd;
+  color: #1565c0;
+}
+
+.status-message.error {
+  background-color: #fdecea;
+  color: #c62828;
+}
