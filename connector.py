@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 from databricks import sql
+from databricks.sdk.core import Config, oauth_service_principal
 
 
 def get_connection():
@@ -11,14 +12,20 @@ def get_connection():
     http_path = os.environ.get(
         "DATABRICKS_HTTP_PATH", "/sql/1.0/warehouses/d490a228b5b077b3"
     )
-    token = os.environ.get("DATABRICKS_TOKEN")
+    client_id = os.environ.get("DATABRICKS_CLIENT_ID")
+    client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET")
 
-    if token:
-        # Token auth — used in Cloud Run / headless environments
+    if client_id and client_secret:
+        # OAuth M2M — used in Cloud Run / headless environments
+        cfg = Config(
+            host=f"https://{server}",
+            client_id=client_id,
+            client_secret=client_secret,
+        )
         return sql.connect(
             server_hostname=server,
             http_path=http_path,
-            access_token=token,
+            credentials_provider=oauth_service_principal(cfg),
         )
     else:
         # Browser-based OAuth — used for local development
