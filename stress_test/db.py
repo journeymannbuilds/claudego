@@ -11,7 +11,8 @@ def run_query(query: str) -> pd.DataFrame:
     connection = sql.connect(
         server_hostname=os.getenv("DATABRICKS_HOST"),
         http_path=os.getenv("DATABRICKS_HTTP_PATH"),
-        access_token=os.getenv("DATABRICKS_TOKEN"),
+        client_id=os.getenv("DATABRICKS_CLIENT_ID"),
+        client_secret=os.getenv("DATABRICKS_CLIENT_SECRET"),
     )
     try:
         cursor = connection.cursor()
