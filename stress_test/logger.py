@@ -2,6 +2,7 @@ import sqlite3
 import csv
 import io
 from datetime import datetime, timezone
+from typing import Optional, List, Dict
 
 DB_PATH = "./stress_test_log.db"
 
@@ -31,8 +32,8 @@ def log_query(
     generated_sql: str,
     row_count: int,
     success: bool,
-    error_message: str | None,
-    gap_flag: str | None,
+    error_message: Optional[str],
+    gap_flag: Optional[str],
 ):
     conn = _get_connection()
     try:
@@ -56,7 +57,7 @@ def log_query(
         conn.close()
 
 
-def get_recent_logs(limit: int = 20) -> list[dict]:
+def get_recent_logs(limit: int = 20) -> List[Dict]:
     conn = _get_connection()
     try:
         cursor = conn.execute(
