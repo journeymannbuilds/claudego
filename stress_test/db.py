@@ -17,7 +17,7 @@ def run_query(query: str) -> pd.DataFrame:
     try:
         cursor = connection.cursor()
         try:
-            cursor.execute(query, timeout=30)
+            cursor.execute(query)
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
             return pd.DataFrame(rows, columns=columns)
