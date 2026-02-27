@@ -10,12 +10,17 @@ from db import get_connection
 from logger import ToolLogger
 
 # ---------------------------------------------------------------------------
-# Dangerous SQL pattern — reject anything that isn't read-only
+# Read-only SQL allowlist — only these statement types are permitted
 # ---------------------------------------------------------------------------
-_WRITE_PATTERN = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|GRANT)\b",
+_READONLY_PATTERN = re.compile(
+    r"^\s*(SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|WITH)\b",
     re.IGNORECASE,
 )
+
+# ---------------------------------------------------------------------------
+# Identifier validation — only allow safe characters in catalog/schema/table
+# ---------------------------------------------------------------------------
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
 
 # ---------------------------------------------------------------------------
 # MCP server
@@ -63,11 +68,11 @@ def _execute_query_no_results(sql_text: str) -> list[list]:
 async def query(sql: str) -> str:
     """Execute a read-only SQL query and return results as JSON."""
     with ToolLogger("query", {"sql": sql}) as log:
-        # Safety: reject write operations
-        if _WRITE_PATTERN.search(sql):
+        # Safety: only allow read-only statements
+        if not _READONLY_PATTERN.match(sql):
             raise ValueError(
-                "Write operations are not allowed. "
-                "Only SELECT / SHOW / DESCRIBE queries are permitted."
+                "Only read-only queries are allowed "
+                "(SELECT, SHOW, DESCRIBE, EXPLAIN, WITH)."
             )
 
         rows = await anyio.to_thread.run_sync(lambda: _execute_query(sql))
@@ -84,6 +89,9 @@ async def query(sql: str) -> str:
 async def list_tables(catalog: str = "longtail") -> str:
     """List tables across all schemas in the given catalog."""
     with ToolLogger("list_tables", {"catalog": catalog}) as log:
+        if not _SAFE_IDENTIFIER.match(catalog):
+            raise ValueError("Catalog name contains invalid characters.")
+
         # Get schemas
         schema_data = await anyio.to_thread.run_sync(
             lambda: _execute_query(f"SHOW SCHEMAS IN `{catalog}`")
@@ -126,6 +134,8 @@ async def describe_table(table: str) -> str:
             raise ValueError(
                 "Table must be fully qualified: catalog.schema.table"
             )
+        if not all(_SAFE_IDENTIFIER.match(p) for p in parts):
+            raise ValueError("Table name parts contain invalid characters.")
         safe_name = ".".join(f"`{p}`" for p in parts)
 
         rows = await anyio.to_thread.run_sync(
