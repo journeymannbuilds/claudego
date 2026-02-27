@@ -1,4 +1,4 @@
-"""Databricks connection helper using Personal Access Token (PAT)."""
+"""Databricks connection helper using OAuth M2M (service principal)."""
 
 import os
 
@@ -10,5 +10,7 @@ def get_connection():
     return sql.connect(
         server_hostname=os.environ["DATABRICKS_HOST"],
         http_path=os.environ["DATABRICKS_HTTP_PATH"],
-        access_token=os.environ["DATABRICKS_TOKEN"],
+        auth_type="databricks-oauth",
+        oauth_client_id=os.environ["DATABRICKS_CLIENT_ID"],
+        oauth_client_secret=os.environ["DATABRICKS_CLIENT_SECRET"],
     )
