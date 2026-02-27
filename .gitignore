@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 
 # Environment
+.env
 backend/.env
 
 # Build output
