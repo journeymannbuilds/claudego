@@ -12,32 +12,19 @@ from databricks.sdk.core import Config, oauth_service_principal
 
 
 def _credential_provider():
-    server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
     config = Config(
-        host=f"https://{server_hostname}",
-        client_id=os.environ.get("DATABRICKS_CLIENT_ID"),
-        client_secret=os.environ.get("DATABRICKS_CLIENT_SECRET"),
+        host=f"https://{os.environ['DATABRICKS_HOST']}",
+        client_id=os.environ["DATABRICKS_CLIENT_ID"],
+        client_secret=os.environ["DATABRICKS_CLIENT_SECRET"],
     )
     return oauth_service_principal(config)
 
 
 def get_connection():
     """Create a connection to the Databricks SQL warehouse."""
-    server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
-    http_path = os.environ.get("DATABRICKS_HTTP_PATH")
-    client_id = os.environ.get("DATABRICKS_CLIENT_ID")
-    client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET")
-
-    if not all([server_hostname, http_path, client_id, client_secret]):
-        raise ValueError(
-            "Missing Databricks connection settings. "
-            "Set DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, "
-            "DATABRICKS_CLIENT_ID, and DATABRICKS_CLIENT_SECRET in your .env file."
-        )
-
     return databricks_sql.connect(
-        server_hostname=server_hostname,
-        http_path=http_path,
+        server_hostname=os.environ["DATABRICKS_HOST"],
+        http_path=os.environ["DATABRICKS_HTTP_PATH"],
         credentials_provider=_credential_provider(),
     )
 
