@@ -1,0 +1,146 @@
+"""Remote MCP server exposing Databricks tools over Streamable HTTP."""
+
+import json
+import re
+
+import anyio
+from mcp.server.fastmcp import FastMCP
+
+from db import get_connection
+from logger import ToolLogger
+
+# ---------------------------------------------------------------------------
+# Dangerous SQL pattern — reject anything that isn't read-only
+# ---------------------------------------------------------------------------
+_WRITE_PATTERN = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|GRANT)\b",
+    re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
+# MCP server
+# ---------------------------------------------------------------------------
+server = FastMCP(
+    name="longtail-mcp",
+    host="0.0.0.0",
+    port=8080,
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers — run sync Databricks calls in a thread
+# ---------------------------------------------------------------------------
+def _execute_query(sql_text: str) -> list[dict]:
+    """Execute a SQL query and return rows as list of dicts."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql_text)
+        columns = [desc[0] for desc in cursor.description]
+        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return rows
+    finally:
+        conn.close()
+
+
+def _execute_query_no_results(sql_text: str) -> list[list]:
+    """Execute a SQL query and return raw rows (for SHOW commands)."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql_text)
+        columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        return [columns, rows]
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Tool 1: query
+# ---------------------------------------------------------------------------
+@server.tool(description="Execute a read-only SQL query against Databricks.")
+async def query(sql: str) -> str:
+    """Execute a read-only SQL query and return results as JSON."""
+    with ToolLogger("query", {"sql": sql}) as log:
+        # Safety: reject write operations
+        if _WRITE_PATTERN.search(sql):
+            raise ValueError(
+                "Write operations are not allowed. "
+                "Only SELECT / SHOW / DESCRIBE queries are permitted."
+            )
+
+        rows = await anyio.to_thread.run_sync(lambda: _execute_query(sql))
+        result = json.dumps(rows, default=str)
+        log.row_count = len(rows)
+        log.output_bytes = len(result.encode())
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Tool 2: list_tables
+# ---------------------------------------------------------------------------
+@server.tool(description="List all fully-qualified table names in a catalog.")
+async def list_tables(catalog: str = "longtail") -> str:
+    """List tables across all schemas in the given catalog."""
+    with ToolLogger("list_tables", {"catalog": catalog}) as log:
+        # Get schemas
+        schema_data = await anyio.to_thread.run_sync(
+            lambda: _execute_query(f"SHOW SCHEMAS IN `{catalog}`")
+        )
+
+        tables: list[str] = []
+        for schema_row in schema_data:
+            schema_name = schema_row.get("databaseName") or schema_row.get("namespace")
+            if not schema_name:
+                # Fallback: take first value
+                schema_name = next(iter(schema_row.values()))
+
+            table_data = await anyio.to_thread.run_sync(
+                lambda sn=schema_name: _execute_query(
+                    f"SHOW TABLES IN `{catalog}`.`{sn}`"
+                )
+            )
+            for table_row in table_data:
+                table_name = table_row.get("tableName") or table_row.get("table")
+                if not table_name:
+                    table_name = next(iter(table_row.values()))
+                tables.append(f"{catalog}.{schema_name}.{table_name}")
+
+        result = json.dumps(tables)
+        log.row_count = len(tables)
+        log.output_bytes = len(result.encode())
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Tool 3: describe_table
+# ---------------------------------------------------------------------------
+@server.tool(description="Describe columns of a fully-qualified table.")
+async def describe_table(table: str) -> str:
+    """Describe a table. Pass a fully-qualified name like catalog.schema.table."""
+    with ToolLogger("describe_table", {"table": table}) as log:
+        # Validate format: expect catalog.schema.table
+        parts = table.split(".")
+        if len(parts) != 3:
+            raise ValueError(
+                "Table must be fully qualified: catalog.schema.table"
+            )
+        safe_name = ".".join(f"`{p}`" for p in parts)
+
+        rows = await anyio.to_thread.run_sync(
+            lambda: _execute_query(f"DESCRIBE TABLE {safe_name}")
+        )
+
+        result = json.dumps(rows, default=str)
+        log.row_count = len(rows)
+        log.output_bytes = len(result.encode())
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    print("Starting longtail-mcp on http://0.0.0.0:8080")
+    server.run(transport="streamable-http")
