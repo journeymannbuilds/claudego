@@ -4,6 +4,10 @@ import json
 import os
 import re
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import anyio
 import hmac
 import uvicorn
