@@ -22,8 +22,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --max-instances 2 \
   --set-env-vars "DATABRICKS_HOST=dbc-871ad75e-3eed.cloud.databricks.com" \
   --set-env-vars "DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/d490a228b5b077b3" \
-  --set-env-vars "DATABRICKS_CLIENT_ID=FILL_IN" \
-  --set-env-vars "DATABRICKS_CLIENT_SECRET=FILL_IN"
+  --set-env-vars "DATABRICKS_ACCESS_TOKEN=FILL_IN"
 
 echo ""
 echo "Deployed. URL:"
