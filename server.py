@@ -1,13 +1,48 @@
 """Remote MCP server exposing Databricks tools over Streamable HTTP."""
 
 import json
+import os
 import re
 
 import anyio
+import hmac
+import uvicorn
 from mcp.server.fastmcp import FastMCP
+from starlette.responses import Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from db import get_connection
 from logger import ToolLogger
+
+# ---------------------------------------------------------------------------
+# Bearer-token auth middleware (optional — enable via MCP_AUTH_TOKEN env var)
+# ---------------------------------------------------------------------------
+# Uses 403 (not 401) on failure so Claude Code's MCP client won't kick off
+# an OAuth discovery flow.
+# ---------------------------------------------------------------------------
+_AUTH_TOKEN: str | None = os.environ.get("MCP_AUTH_TOKEN")
+
+
+class BearerTokenMiddleware:
+    """ASGI middleware that validates an Authorization: Bearer <token> header."""
+
+    def __init__(self, app: ASGIApp, token: str) -> None:
+        self.app = app
+        self.token = token
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            headers = dict(scope.get("headers", []))
+            auth = headers.get(b"authorization", b"").decode()
+            expected = f"Bearer {self.token}"
+            if not (
+                len(auth) == len(expected)
+                and hmac.compare_digest(auth.encode(), expected.encode())
+            ):
+                resp = Response("Forbidden", status_code=403)
+                await resp(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 # ---------------------------------------------------------------------------
 # Read-only SQL allowlist — only these statement types are permitted
@@ -152,5 +187,14 @@ async def describe_table(table: str) -> str:
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    print("Starting longtail-mcp on http://0.0.0.0:8080")
-    server.run(transport="streamable-http")
+    app = server.streamable_http_app()
+
+    if _AUTH_TOKEN:
+        app = BearerTokenMiddleware(app, _AUTH_TOKEN)
+        print("Starting longtail-mcp on http://0.0.0.0:8080 (bearer auth enabled)")
+    else:
+        print("Starting longtail-mcp on http://0.0.0.0:8080 (no auth)")
+
+    config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="info")
+    uv_server = uvicorn.Server(config)
+    anyio.run(uv_server.serve)
